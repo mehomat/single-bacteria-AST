@@ -33,7 +33,7 @@ def computeRelativeGrowthRate_v0(df,switch_frame,norm_frame=[]):
     return df
 
 
-def computeRelativeGrowthRate(df,switch_frame,norm_frame=None,make_plot=False):
+def computeRelativeGrowthRate(df,switch_frame,norm_frame=None,make_plot=False,cutoff = 0.002):
     if norm_frame is None:
         growth_rate_before_switch_df = pd.DataFrame()
         if make_plot:
@@ -81,7 +81,6 @@ def computeRelativeGrowthRate(df,switch_frame,norm_frame=None,make_plot=False):
     #means = growth_rate_before_switch_df.groupby('Strain')['GrowthRate'].mean()
     #stdevs = growth_rate_before_switch_df.groupby('Strain')['GrowthRate'].std()
     #cutoffs = means-3*stdevs
-    cutoff = 0.002
     if make_plot:
         growth_rate_before_switch_df.hist(by="Strain",column="GrowthRate",sharex=True,sharey=True)
     #print(cutoffs)
