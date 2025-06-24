@@ -98,12 +98,12 @@ def computeRelativeGrowthRate(df,switch_frame,norm_frame=None,make_plot=False,cu
     return df
 
 
-def add_antibiotic_info(ax,switchFrames,labels,color="black",lw=1):
+def add_antibiotic_info(ax,switch_timepoints,labels,color="black",lw=1):
     ylim = ax.get_ylim()
     fontweight="bold" if lw>1 else "normal"
-    for i in range(len(switchFrames)):
-        ax.vlines(switchFrames[i],ylim[0],ylim[1],colors='black',linestyles="dashed",color=color,lw=lw)
-        ax.text(switchFrames[i],ylim[0]+0.9*(ylim[1]-ylim[0])," + "+labels[i],color=color,fontweight=fontweight)
+    for t,l in zip(switch_timepoints,labels):
+        ax.vlines(t,ylim[0],ylim[1],colors='black',linestyles="dashed",color=color,lw=lw)
+        ax.text(t,ylim[0]+0.9*(ylim[1]-ylim[0])," + "+l,color=color,fontweight=fontweight)
     ax.set_ylim(ylim)
 
 def italic_strain(strain):
@@ -125,7 +125,7 @@ def label_subplots(fig):
     # Use ScaledTranslation to put the label
     # - at the top left corner (axes fraction (0, 1)),
     # - offset 20 pixels left and 7 pixels up (offset points (-20, +7)),
-    # i.e. just outside the axes.
+    # i.e., just outside the axes.
         ax.text(
             0.0, 1.0, label, transform=(
                 ax.transAxes + ScaledTranslation(-20/72, +7/72, fig.dpi_scale_trans)),
