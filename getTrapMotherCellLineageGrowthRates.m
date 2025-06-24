@@ -1,6 +1,6 @@
 function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange)
 % T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange)
-% This function estimates growth rate of the mother cells at the bottom of 
+% This function estimates the growth rate of the mother cells at the bottom of 
 % mother-machine traps and their descendants for a strain treated with 
 % antibiotics
 %
@@ -10,20 +10,20 @@ function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switc
 %            When K is even, the window is centered about the current and 
 %            previous elements of X.
 %            If tuple (NB,NF), the window uses previous NB frames, the 
-%            current frame, and the next NF frames, i.e. in total NB+NF+1.
+%            current frame, and the next NF frames, i.e., in total NB+NF+1.
 %   fittype - either 'fit1' (exponential fit) or 'poly1' (linear fit)
 %   switchFrame - frame index, where the first media switch occurs
-%   dt - frame rate, in munutes.
+%   dt - frame rate, in minutes.
 %   strain - string with the name of the string. Optional.
 %   posRange - range of positions with the strain. Optional, use all
 %              positions by default.
 %
-% Output: table T with columns 'Frame','Trap','GrowthRate','Strain'.
-% The trap id for trap t in position p is (p-1)*nTraps+t.
+% Output: table T with columns 'Frame', 'Trap', 'GrowthRate', 'Strain'.
+% The trap ID for trap t in position p is (p-1)*nTraps+t.
 
 %parse parameters
-if nargin<5, strain = "";end
-if nargin<6, posRange = [];end
+if nargin<6, strain = "";end
+if nargin<7, posRange = [];end
 
 %hard-coded parameters
 minLength = 5; % min track length for growth rate fitting
