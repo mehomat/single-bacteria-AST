@@ -1,4 +1,4 @@
-function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange)
+function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange,yThresh)
 % T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange)
 % This function estimates the growth rate of the mother cells at the bottom of 
 % mother-machine traps and their descendants for a strain treated with 
@@ -17,6 +17,8 @@ function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switc
 %   strain - string with the name of the string. Optional.
 %   posRange - range of positions with the strain. Optional, use all
 %              positions by default.
+%   yThresh - a y-axis threshold for discarding trap mother cells.
+%             Optional, default [].
 %
 % Output: table T with columns 'Frame', 'Trap', 'GrowthRate', 'Strain'.
 % The trap ID for trap t in position p is (p-1)*nTraps+t.
@@ -24,6 +26,8 @@ function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switc
 %parse parameters
 if nargin<6, strain = "";end
 if nargin<7, posRange = [];end
+if nargin<8, yThresh = [];end
+
 
 %hard-coded parameters
 minLength = 5; % min track length for growth rate fitting
@@ -71,11 +75,20 @@ for pi=1:length(posRange)
     dy=quantile(cellLengths(birthFrames<switchFrame),0.1)/2;
     meanshifty = mean(shifty(lastFrames<switchFrame),'omitnan');
     fprintf('%s(%d): meanshifty = %.2f\n',posList{pos},pos,meanshifty);
+
     if meanshifty<0 % trap mother cells located at the bottom of images
         cellYcoord = cellYcoord+cellLengths;
     end
+    if ~isempty(yThresh)
+        %discard cells outside the feasible range
+        if meanshifty<0
+            cellYcoord(cellYcoord>yThresh)=NaN;
+        else
+            cellYcoord(cellYcoord<yThresh)=NaN;
+        end
+    end
+
     
-    %
     posFrames = [];
     posGrowthRates = [];
     posTraps = [];
