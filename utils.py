@@ -8,92 +8,24 @@ def print_setup():
     plt.rcParams["font.family"] = "Times New Roman"
     plt.rcParams["savefig.dpi"] = 300
 
-def computeRelativeGrowthRate_v0(df,switch_frame,norm_frame=[]):
-    if norm_frame==[]:
-        norm_frame=max(1,switch_frame-40)
+def computeRelativeGrowthRate(df,switch_time,norm_time=None,make_plot=True,cutoff = 0.002):
+    # by default, use 50 minutes before media switch to compute average growth rate
+    if norm_time is None:
+        norm_time = max(0,switch_time-50)
 
-    growth_rate_before_switch_df = df[(df['Frame']>=norm_frame) & (df['Frame']<=switch_frame)].groupby(['Trap','Strain'],as_index=False)['GrowthRate'].mean()
-
-    #discard outliers
-    #means = growth_rate_before_switch_df.groupby('Strain')['GrowthRate'].mean()
-    #stdevs = growth_rate_before_switch_df.groupby('Strain')['GrowthRate'].std()
-    #cutoffs = means-3*stdevs
-    cutoff=0.002
-    #print(cutoffs)
-    for strain in growth_rate_before_switch_df['Strain'].unique():
-        growth_rate_before_switch_df.loc[(growth_rate_before_switch_df['GrowthRate']<cutoff) & 
-                                        (growth_rate_before_switch_df['Strain']==strain), 'GrowthRate'] = np.nan
-        #print(f"{strain}: discarded {growth_rate_before_switch_df.loc[growth_rate_before_switch_df['Strain']==strain,'GrowthRate'].isna().sum()} traps")
-
-
-    #compute normalized growth rate
-    growth_rate_before_switch_df=growth_rate_before_switch_df.set_index('Trap')
-    #print(growth_rate_before_switch_df[10])
-    df['Relative Growth Rate'] = df.apply(lambda x: x['GrowthRate'] / growth_rate_before_switch_df.loc[x['Trap'],'GrowthRate'], axis=1)
-    return df
-
-
-def computeRelativeGrowthRate(df,switch_frame,norm_frame=None,make_plot=False,cutoff = 0.002):
-    if norm_frame is None:
-        growth_rate_before_switch_df = pd.DataFrame()
-        if make_plot:
-            fig,axs=plt.subplots(1,len(df['Strain'].unique()),sharex=True,sharey=True,layout="constrained")
-        else:
-            axs = np.arange(len(set(df['Strain'])))
-            
-        for (i,s) in enumerate(set(df['Strain'])):
-            df_s=df[df['Strain']==s]
-            traps = df_s['Trap'].unique()
-            num_frames = np.arange(20, min(70,switch_frame))
-            norm_factors=np.empty((len(traps),len(num_frames)),)*np.nan
-            for (j,num_frame) in enumerate(num_frames):
-                growth_rate_before_switch_df_j = df_s[(df_s['Frame']>=switch_frame-num_frame) & (df_s['Frame']<=switch_frame)].groupby('Trap')['GrowthRate'].mean()
-                norm_factors[:,j] = growth_rate_before_switch_df_j.values
-            norm_factors_df = pd.DataFrame(norm_factors,columns=num_frames,index=traps)
-            rel_norm_factors_df = norm_factors_df.apply(lambda x: x/x.iloc[-1],axis=1)
-            meanvals = rel_norm_factors_df.mean()
-            stdvals = rel_norm_factors_df.std()
-            ind=np.argmax((np.abs(meanvals-1)<0.001) & (stdvals<0.01))
-            #print(meanvals)
-            #print(ind)
-
-            print(f"Num frames for growth rate normalization of {s}: {num_frames[ind]}")
-            growth_rate_before_switch_df_s = norm_factors_df[num_frames[ind]].to_frame()
-            growth_rate_before_switch_df_s.rename(columns={num_frames[ind]:"GrowthRate"},inplace=True)
-            growth_rate_before_switch_df_s.loc[:,'Strain'] = s
-            growth_rate_before_switch_df = pd.concat([growth_rate_before_switch_df,growth_rate_before_switch_df_s])
-            if make_plot:
-                if len(set(df['Strain']))>1:
-                    ax=axs[i]
-                else:
-                    ax=axs
-                ax.plot(num_frames,meanvals)
-                ax.fill_between(num_frames,meanvals+stdvals,meanvals-stdvals,alpha=0.25)
-                ax.set_title(s)
-        if make_plot:
-            plt.show()
-
-        growth_rate_before_switch_df = growth_rate_before_switch_df.reset_index().rename({"index":"Trap"},axis="columns")
-    else:
-        growth_rate_before_switch_df = df[(df['Frame']>=norm_frame) & (df['Frame']<=switch_frame)].groupby(['Trap','Strain'],as_index=False)['GrowthRate'].mean()
-
-    #discard outliers
-    #means = growth_rate_before_switch_df.groupby('Strain')['GrowthRate'].mean()
-    #stdevs = growth_rate_before_switch_df.groupby('Strain')['GrowthRate'].std()
-    #cutoffs = means-3*stdevs
+    mean_gr_df = df[(df['Time (min)']>=norm_time) & (df['Time (min)']<=switch_time)].groupby(['Trap','Strain'],as_index=False)['GrowthRate'].mean()
+    mean_gr_df=mean_gr_df.set_index('Trap')
+    
     if make_plot:
-        growth_rate_before_switch_df.hist(by="Strain",column="GrowthRate",sharex=True,sharey=True)
-    #print(cutoffs)
-    for strain in growth_rate_before_switch_df['Strain'].unique():
-        growth_rate_before_switch_df.loc[(growth_rate_before_switch_df['GrowthRate']<cutoff) & 
-                                        (growth_rate_before_switch_df['Strain']==strain), 'GrowthRate'] = np.nan
-        print(f"{strain}: discarded {growth_rate_before_switch_df.loc[growth_rate_before_switch_df['Strain']==strain,'GrowthRate'].isna().sum()} traps")
+        mean_gr_df.hist(by="Strain",column="GrowthRate",sharex=True,sharey=True)
 
+    #discard outliers
+    mean_gr_df.loc[(mean_gr_df['GrowthRate']<cutoff), 'GrowthRate'] = np.nan
+    for strain in mean_gr_df['Strain'].unique():
+        print(f"{strain}: discarded {mean_gr_df.loc[mean_gr_df['Strain']==strain,'GrowthRate'].isna().sum()} traps")
 
     #compute normalized growth rate
-    growth_rate_before_switch_df=growth_rate_before_switch_df.set_index('Trap')
-    #print(growth_rate_before_switch_df[10])
-    df['Relative Growth Rate'] = df.apply(lambda x: x['GrowthRate'] / growth_rate_before_switch_df.loc[x['Trap'],'GrowthRate'], axis=1)
+    df['Relative Growth Rate'] = df.apply(lambda x: x['GrowthRate'] / mean_gr_df.loc[x['Trap'],'GrowthRate'], axis=1)
     df['GrowthRate']= df.apply(lambda x: np.nan if np.isnan(x['Relative Growth Rate']) else x['GrowthRate'],axis=1)
     return df
 
@@ -151,3 +83,11 @@ def plotKymograph(ax,im,num_traps,dt,t=None,t_start=0,labelstep=50):
     ax.set_xticklabels(ticklabels)
     ax.set_yticks([])
     ax.set_xlabel("Time (min)") 
+
+def frame2time(frames,dt):
+    if type(frames)==list:
+        frames = [(f-1)*dt for f in frames]
+    else:
+        frames = (frames-1)*dt
+    return frames
+
