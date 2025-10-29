@@ -46,7 +46,7 @@ allGrowthRates = []; % growth rates
 allFrames = []; % frames
 allTraps = []; % traps
 allStrains = [];
-for pi=1:length(posRange)
+parfor pi=1:length(posRange)
     pos = posRange(pi);
 
     % Load cell data for the current position
@@ -57,10 +57,11 @@ for pi=1:length(posRange)
 
 
     % Identify trap mother cell locations
-    cellYcoord = nan(size(cellTraps));
+    cellYcoord = nan(size(cellTraps)); % if mother cells at the top, min cell y-coord, else max cell y-coord.
     cellLengths = nan(size(cellTraps));
     isDividing = false(size(cellTraps));
     shifty = zeros(size(cellTraps));
+    cellGR = nan(size(cellTraps));
     for i=1:length(mCells)
         f = find(mCells(i).badSegmentations==0,1);
         if ~isempty(f)
@@ -71,37 +72,38 @@ for pi=1:length(posRange)
                 isDividing(i)=true;
             end
         end
+        cellGR(i)=getGrowthRateBeforeSwitch(mCells(i),switchFrame);
     end
-    dy=quantile(cellLengths(birthFrames<switchFrame),0.1)/2;
-    meanshifty = mean(shifty(lastFrames<switchFrame),'omitnan');
+    dy=quantile(cellLengths(birthFrames<switchFrame),0.1)/2; %the 10% cell length quantile divided by 2
+    meanshifty = mean(shifty(lastFrames<switchFrame),'omitnan'); %mean cell shift along y-axis. If >0, mother cells at the top, else at the bottom.
     fprintf('%s(%d): meanshifty = %.2f\n',posList{pos},pos,meanshifty);
 
-    if meanshifty<0 % trap mother cells located at the bottom of images
+    if meanshifty<0 % trap mother cells located at the bottom of images 
         cellYcoord = cellYcoord+cellLengths;
     end
-    if ~isempty(yThresh)
-        %discard cells outside the feasible range
+    if ~isempty(yThresh) %discard cells outside the feasible range
         if meanshifty<0
             cellYcoord(cellYcoord>yThresh)=NaN;
         else
             cellYcoord(cellYcoord<yThresh)=NaN;
         end
     end
-
+    % discard slow growing cells
+    cellYcoord(cellGR<0.002 | isnan(cellGR))=NaN;
     
     posFrames = [];
     posGrowthRates = [];
     posTraps = [];
-    parfor trap = 1:nGrowthChannels
+    for trap = 1:nGrowthChannels
     
         % find trap mother cells and sort them by the birth frame
         ind = cellTraps==trap & isDividing;
         if any(ind)
-            if meanshifty>0
-                yCutOff = min(cellYcoord(cellTraps==trap & isDividing))+dy;
+            if meanshifty>0 % mother cells at the top
+                yCutOff = min(cellYcoord(cellTraps==trap))+dy;
                 trapMotherCellIds = find(cellTraps==trap & cellYcoord<yCutOff);
             else
-                yCutOff = max(cellYcoord(cellTraps==trap & isDividing))-dy;
+                yCutOff = max(cellYcoord(cellTraps==trap))-dy;
                 trapMotherCellIds = find(cellTraps==trap & cellYcoord>yCutOff);
             end
         else
@@ -110,7 +112,7 @@ for pi=1:length(posRange)
 
         [trapBirthFrames,sortInd] = sort(birthFrames(trapMotherCellIds));
         if numel(trapBirthFrames)>numel(unique(trapBirthFrames))
-             warning('Detected two trap mother cells in the same frame in trap %d, pos %d',trap,pos)
+             warning('Detected multiple trap mother cells in the same frame in pos %d, trap %d',pos, trap)
         end
         trapMotherCellIds = trapMotherCellIds(sortInd);
         if ~isempty(trapBirthFrames) && trapBirthFrames(1)>trackFrameRange(1)
