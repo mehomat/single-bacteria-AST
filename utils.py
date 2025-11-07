@@ -91,3 +91,9 @@ def frame2time(frames,dt):
         frames = (frames-1)*dt
     return frames
 
+def decodeTraps(traps,num_traps):
+    if not type(traps)==list:
+        traps = list(traps)
+    return [(t//num_traps+1, t % num_traps) for t in traps]
+
+

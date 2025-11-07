@@ -97,7 +97,7 @@ parfor pi=1:length(posRange)
     for trap = 1:nGrowthChannels
     
         % find trap mother cells and sort them by the birth frame
-        ind = cellTraps==trap & isDividing;
+        ind = cellTraps==trap; % & isDividing;
         if any(ind)
             if meanshifty>0 % mother cells at the top
                 yCutOff = min(cellYcoord(cellTraps==trap))+dy;
