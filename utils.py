@@ -30,12 +30,12 @@ def computeRelativeGrowthRate(df,switch_time,norm_time=None,make_plot=True,cutof
     return df
 
 
-def add_antibiotic_info(ax,switch_timepoints,labels,color="black",lw=1):
+def add_antibiotic_info(ax,switch_timepoints,labels,color="black",lw=1,yfrac=0.9):
     ylim = ax.get_ylim()
     fontweight="bold" if lw>1 else "normal"
     for t,l in zip(switch_timepoints,labels):
         ax.vlines(t,ylim[0],ylim[1],colors='black',linestyles="dashed",color=color,lw=lw)
-        ax.text(t,ylim[0]+0.9*(ylim[1]-ylim[0])," + "+l,color=color,fontweight=fontweight)
+        ax.text(t,ylim[0]+yfrac*(ylim[1]-ylim[0])," + "+l,color=color,fontweight=fontweight)
     ax.set_ylim(ylim)
 
 def italic_strain(strain):
