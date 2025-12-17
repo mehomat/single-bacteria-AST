@@ -3,6 +3,7 @@ import numpy as np
 import string
 from matplotlib.transforms import ScaledTranslation
 from matplotlib import pyplot as plt
+from statsmodels.tsa.stattools import acf
 
 def print_setup():
     plt.rcParams["font.family"] = "Times New Roman"
@@ -15,7 +16,7 @@ def computeRelativeGrowthRate(df,switch_time,norm_time=None,make_plot=True,cutof
 
     mean_gr_df = df[(df['Time (min)']>=norm_time) & (df['Time (min)']<=switch_time)].groupby(['Trap','Strain'],as_index=False)['GrowthRate'].mean()
     mean_gr_df=mean_gr_df.set_index('Trap')
-    
+
     if make_plot:
         mean_gr_df.hist(by="Strain",column="GrowthRate",sharex=True,sharey=True)
 
@@ -33,6 +34,10 @@ def computeRelativeGrowthRate(df,switch_time,norm_time=None,make_plot=True,cutof
 def add_antibiotic_info(ax,switch_timepoints,labels,color="black",lw=1,yfrac=0.9):
     ylim = ax.get_ylim()
     fontweight="bold" if lw>1 else "normal"
+    if not type(switch_timepoints)==list:
+        switch_timepoints = [switch_timepoints]
+    if not type(labels)==list:
+        labels = [labels]
     for t,l in zip(switch_timepoints,labels):
         ax.vlines(t,ylim[0],ylim[1],colors='black',linestyles="dashed",color=color,lw=lw)
         ax.text(t,ylim[0]+yfrac*(ylim[1]-ylim[0])," + "+l,color=color,fontweight=fontweight)
@@ -62,7 +67,7 @@ def label_subplots(fig):
             0.0, 1.0, label, transform=(
                 ax.transAxes + ScaledTranslation(-20/72, +7/72, fig.dpi_scale_trans)),
             fontsize='large', va='bottom', weight="bold")#, fontfamily='serifbold')
-            
+
 def convertTimeToKymoCoords(t,im,num_traps,dt,t_start=0):
     trap_width = im.shape[1]/num_traps
     w = trap_width/2
@@ -70,7 +75,7 @@ def convertTimeToKymoCoords(t,im,num_traps,dt,t_start=0):
     ticks = t*trap_width/dt+w
     ticklabels = t_start+t
     return ticks,ticklabels
-    
+
 def plotKymograph(ax,im,num_traps,dt,t=None,t_start=0,labelstep=50):
     ax.imshow(im,cmap="gray")
     if t is None:
@@ -82,7 +87,7 @@ def plotKymograph(ax,im,num_traps,dt,t=None,t_start=0,labelstep=50):
     ax.set_xticks(ticks)
     ax.set_xticklabels(ticklabels)
     ax.set_yticks([])
-    ax.set_xlabel("Time (min)") 
+    ax.set_xlabel("Time (min)")
 
 def frame2time(frames,dt):
     if type(frames)==list:
@@ -95,5 +100,12 @@ def decodeTraps(traps,num_traps):
     if not type(traps)==list:
         traps = list(traps)
     return [(t//num_traps+1, t % num_traps) for t in traps]
+
+def get_autocorr(df,nlags=60,species='',trap=[]):
+    acf_values = acf(df.dropna(),nlags=nlags)
+    return pd.DataFrame(data={'Lag (min)':np.arange(len(acf_values)),\
+                              'ACF':acf_values,\
+                              'Trap':trap,\
+                              'Species':species})
 
 
