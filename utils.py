@@ -99,7 +99,7 @@ def frame2time(frames,dt):
 def decodeTraps(traps,num_traps):
     if not type(traps)==list:
         traps = list(traps)
-    return [(t//num_traps+1, t % num_traps) for t in traps]
+    return [((t-1) // num_traps +1, (t-1) % num_traps +1) for t in traps]
 
 def get_autocorr(df,nlags=60,species='',trap=[]):
     acf_values = acf(df.dropna(),nlags=nlags)
