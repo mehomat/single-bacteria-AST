@@ -101,8 +101,8 @@ def decodeTraps(traps,num_traps):
         traps = list(traps)
     return [((t-1) // num_traps +1, (t-1) % num_traps +1) for t in traps]
 
-def get_autocorr(df,nlags=60,species='',trap=[]):
-    acf_values = acf(df.dropna(),nlags=nlags)
+def get_autocorr(series, nlags=60, species=None, trap=None):
+    acf_values = acf(series,nlags=nlags,missing="conservative")
     return pd.DataFrame(data={'Lag (min)':np.arange(len(acf_values)),\
                               'ACF':acf_values,\
                               'Trap':trap,\
