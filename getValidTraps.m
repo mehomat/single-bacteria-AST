@@ -1,14 +1,30 @@
 function S = getValidTraps(expInfoObj, pos, switchFrame, dt, varargin)
 %
-% Identify valid traps and return mother cell IDs per trap.
+% Identify valid traps and return mother cell IDs per trap
+% 
+% Input:
+% - expInfoObj: MATLAB object
+% - pos: scalar, position
+% - switchFrame: scalar, time point of switch to antibiotics
+% - dt: scalar, time step
 %
 % Name-value pairs:
-% - 'Traps': array of trap indices (default: all growth channels)
-% - 'YThresh': scalar or [] (default: [])
-% - 'MinCellGR': scalar (default: 0.002)
-% - 'PreMarginMinutes': scalar minutes (default: 15)
-% - 'TrackFrameRange': [start end] frames (default: [switchFrame-10/dt, switchFrame+5/dt])
-% - 'RequireDividing': logical (default: false) 
+% - 'Traps': array of trap indices, default is all growth channels
+% - 'YThresh': scalar or [], default is []
+% - 'MinCellGR': scalar, default is 0.002
+% - 'PreMarginMinutes': scalar minutes, default is 15
+% - 'TrackFrameRange': [start end] frames, default is [switchFrame-10/dt, switchFrame+5/dt])
+% - 'RequireDividing': logical, default is false
+%
+% Output:
+% - S: structure array where
+% S(ti).pos is the input position
+% S(ti).trap is the trap index from trapRange(ti)
+% S(ti).trapID is the global trap ID
+% S(ti).motherIds is a column vector of indices into mCells for the trap
+% mother cells found in that trap and sorted by birth frame
+% S(ti).isValid is a logical flag and is only true if the trap passed the
+% checks and if motherIds is not empty
 
 p = inputParser;
 p.addParameter('Traps', [], @(x) isnumeric(x));
@@ -83,8 +99,10 @@ preMarginFrames = round(preMarginMinutes / dt);
 cutoffFrame = max(switchFrame - preMarginFrames, 1);
 
 % Output
-S = struct('pos', {}, 'trap', {}, 'trapID', {}, 'motherIds', {}, 'isValid', {});
+nTraps = numel(trapRange);
+S(nTraps) = struct('pos', [], 'trap', [], 'trapID', [], 'motherIds', [],  'isValid', [] );
 
+trapIDs = (pos-1) * nGrowthChannels + trapRange;
 for ti = 1:numel(trapRange)
     trap = trapRange(ti);
 
@@ -127,12 +145,12 @@ for ti = 1:numel(trapRange)
     end
 
     % Store
-    trapID = (pos-1) * nGrowthChannels + trap;
-    S(end+1).pos = pos;
-    S(end).trap = trap;
-    S(end).trapID = trapID;
-    S(end).motherIds = trapMotherCellIds(:); % column vector
-    S(end).isValid = isValid && ~isempty(trapMotherCellIds);
+    S(ti).pos = pos;
+    S(ti).trap = trap;
+    S(ti).trapID = trapIDs(ti);
+    S(ti).motherIds = trapMotherCellIds(:); % column vector
+    S(ti).isValid = isValid && ~isempty(trapMotherCellIds);
+    
 end
 
 end

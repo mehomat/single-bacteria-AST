@@ -1,7 +1,8 @@
-function T = getTrapMotherCellLineageGrowthRates(expInfoObj, switchFrame, dt, strain, varargin)
+function T = getTrapMotherCellLineageGrowthRatesVaryingWindow(expInfoObj, switchFrame, dt, strain, varargin)
 
-% Computes lineage growth rates per trap (mother + descendants) and keeps only
-% traps whose mother selection passes pre-switch growth QC
+% Computes lineage growth rates per trap (mother + descendants), using:
+% - WindowBefore for frames <= switchFrame
+% - WindowAfterSwitch for frames > switchFrame
 %
 % Input:
 % - expInfoObj: MATLAB object
@@ -10,7 +11,8 @@ function T = getTrapMotherCellLineageGrowthRates(expInfoObj, switchFrame, dt, st
 % - strain: string, name of the strain
 %
 % Name-value pairs:
-% - 'Window': [NB NF] or scalar, default [10 0]
+% - 'WindowBefore': [NB NF] or scalar, default [10 0]
+% - 'WindowAfterSwitch': [NB NF] or scalar, default [10 0]
 % - 'FitType': 'exp1' or 'poly1', default 'exp1'
 % - 'Positions': numeric array, default []
 % - 'Traps': numeric array, default []
@@ -22,23 +24,23 @@ function T = getTrapMotherCellLineageGrowthRates(expInfoObj, switchFrame, dt, st
 %% Parse inputs
 p = inputParser;
 
-p.addParameter('Window', [10 0], @(x) isnumeric(x) && (isscalar(x) || (numel(x)==2)));
+p.addParameter('WindowBefore', [10 0], @(x) isnumeric(x) && (isscalar(x) || numel(x)==2));
+p.addParameter('WindowAfterSwitch', [10 0], @(x) isnumeric(x) && (isscalar(x) || numel(x)==2));
 p.addParameter('FitType', 'exp1', @(x) (ischar(x) || isstring(x)));
-
 p.addParameter('Positions', [], @(x) isnumeric(x));
 p.addParameter('Traps', [], @(x) isnumeric(x));
 p.addParameter('YThresh', []);
 
 p.parse(varargin{:});
 
-window = p.Results.Window;
+Kpre  = p.Results.WindowBefore;
+Kpost = p.Results.WindowAfterSwitch;
 fittype = char(p.Results.FitType);
 posRange = p.Results.Positions;
 trapRange = p.Results.Traps;
 yThresh = p.Results.YThresh;
 
 %% Hard-coded parameters
-
 minLength = 5; % min track length for growth rate fitting
 maxGap = 5/dt; % max allowed gap in lineage tracking is 5 min
 minCellGR = 0.002; % min allowed cell growth rate before adding AB
@@ -60,10 +62,10 @@ allTraps = [];
 for pi = 1:length(posRange)
     pos = posRange(pi);
 
-    % Load cell data for the current position 
+    % Load cell data for the current position
     mCells = expInfoObj.getMCells(pos);
 
-    % Use helper to get valid traps + mother IDs
+    % Valid traps + mother IDs
     S = getValidTraps(expInfoObj, pos, switchFrame, dt, ...
         'Traps', trapRange, ...
         'YThresh', yThresh, ...
@@ -90,7 +92,6 @@ for pi = 1:length(posRange)
         trapID = trapIDs(ti);
         trapMotherCellIds = motherIdCells{ti};
 
-        % Lineage growth rate computation 
         trapGrowthRates = [];
         trapFrames = [];
 
@@ -101,9 +102,9 @@ for pi = 1:length(posRange)
             [areas, badSegmentations] = getSumOfLineage(c);
             frs = c.birthFrame : (c.birthFrame + length(areas) - 1);
 
-            % Adjust start to avoid too much overlap with previous segment
+            % Avoid too much overlap with previous segment
             if ~isempty(trapFrames)
-                firstFrameIndex = find(frs > trapFrames(end) - window(1), 1);
+                firstFrameIndex = find(frs > trapFrames(end) - Kpre(1), 1);
                 if isempty(firstFrameIndex)
                     continue;
                 end
@@ -114,7 +115,12 @@ for pi = 1:length(posRange)
 
             if numel(frs) > minLength
                 t = frs * dt;
-                grs = movgrowthrate2(t, areas, badSegmentations, window, fittype);
+
+                % Compute pre/post GRs and stitch
+                gr_pre = movgrowthrate2(t, areas, badSegmentations, Kpre,  fittype);
+                gr_post = movgrowthrate2(t, areas, badSegmentations, Kpost, fittype);
+
+                grs = stitchPrePost(gr_pre, gr_post, frs, switchFrame);
 
                 % Skip overlap frames entirely
                 if ~isempty(trapFrames)
@@ -154,7 +160,6 @@ for pi = 1:length(posRange)
     allGrowthRates = [allGrowthRates; posGrowthRates];
     allFrames = [allFrames; posFrames];
     allTraps = [allTraps; posTraps];
-
 end
 
 % Build output table
@@ -168,3 +173,19 @@ else
 end
 
 end
+
+function gr = stitchPrePost(gr_pre, gr_post, frs, switchFrame)
+
+% Force column vectors 
+gr_pre = gr_pre(:);
+gr_post = gr_post(:);
+frs = frs(:);
+
+% Hard cut (pre for frames <= switchFrame, post for frames > switchFrame)
+gr = gr_pre;
+idx = frs > switchFrame;
+gr(idx) = gr_post(idx);
+
+end
+
+

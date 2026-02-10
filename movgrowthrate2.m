@@ -68,7 +68,7 @@ else
         ind = ~isnan(fa);
         fa = fa(ind);
         ft = ft(ind);
-        if numel(fa) >= 3%max(3,(NF+NB)/2)
+        if numel(fa) >= 3 % max(3,(NF+NB)/2)
             try
                 if strcmp(fittype,'exp1')
                     fitObj = fit(ft,fa,'exp1');

@@ -1,18 +1,19 @@
 function T = getSingleCellLineageAreas(mCell,strain)
+
 % T = getSingleCellLineageAreas(mCell,strain)
 % Computes the cell area for a single lineage over time. 
 % When a division occurs, the function selects the daughter cell that is 
 % closest to the mother-machine trap constriction.
 %
 % Input:
-%   mCell  - MCell object containing cell lineage information.
-%   strain - (Optional) String specifying the strain name. Default: "".
+% - mCell - MCell object containing cell lineage information.
+% - strain - (Optional) String specifying the strain name. Default: "".
 %
 % Output:
 %   T - A table with the following columns:
-%         'Frame'  : Frame index.
-%         'Area'   : Measured trap length (in pixels).
-%         'Strain' : Strain name.
+%  'Frame'  : Frame index.
+%  'Area'   : Measured trap length (in pixels).
+%  'Strain' : Strain name.
 
 if nargin<2
     strain="";

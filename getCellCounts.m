@@ -1,4 +1,4 @@
-function T = getCellCounts(switchFrame, windowSize, labels, timeOffsets, tablefilename, varargin)
+function T = getCellCounts(switchFrame, windowSize, labels, timeOffsets, tablefilename, posRange, outputDir, varargin)
 
 % getCellCounts
 % Cell count analysis using a defined window (trailing by default)
@@ -12,21 +12,23 @@ function T = getCellCounts(switchFrame, windowSize, labels, timeOffsets, tablefi
 % - labels: string array (2 elements)
 % - timeOffsets: numeric row vector, frames after media switch
 % - tablefilename: string/char, output CSV filename to write
+% - posRange: 1x2 cell array where:
+%  posRange{1} = numeric vector of positions for labels(1)
+%  posRange{2} = numeric vector of positions for labels(2)
+% - outputDir: string/char, where the expInfoObj is loaded from
 %
 % Name-value pairs:
 % - 'UseTrailingWindow': logical, default true (false --> centered window)
-% - 'CodeDir': string/char, default 'code' (kept for compatibility)
-% - 'OutputDir': string/char, required
+%
+% Output:
+% - T: table of cell counts
 
 %% Parse inputs
 
 p = inputParser;
-p.addParameter('CodeDir', 'code');
-p.addParameter('OutputDir', '');
 p.addParameter('UseTrailingWindow', true, @(x)islogical(x) || isnumeric(x));
 p.parse(varargin{:});
 
-outputDir = p.Results.OutputDir;
 useTrailingWindow = logical(p.Results.UseTrailingWindow);
 
 % Ensure row vector
@@ -41,8 +43,15 @@ nGrowthChannels = param.nGrowthChannels - length(param.emptyChannel);
 
 %% Experimental settings
 
-strainNames = [labels(1), labels(2)];
 timePoints = switchFrame + timeOffsets;
+
+% Strain names
+strainNames = [labels(1), labels(2)];
+
+% Position ranges
+posLabel1 = unique(posRange{1}(:).');
+posLabel2 = unique(posRange{2}(:).');
+
 
 % Define frame range that actually needs to be computed
 if useTrailingWindow
@@ -66,24 +75,19 @@ allTrapNumbers = cell(nPos, 1);
 
 for pIdx = 1:nPos
 
-    posName = posList{pIdx};
-    trackedPath = fullfile(outputDir, posName, 'trackedCells.mat');
+    mCells = expInfoObj.getMCells(pIdx);
 
-    % Load tracked cells
-    try
-        [mCells, ~] = Cell.MCell.loadMCells(trackedPath);
-    catch
-        fprintf('Could not load mCells for %s\n', posName);
-        allCellCounts{pIdx}  = [];
-        allTrapNumbers{pIdx} = [];
-        allStrains{pIdx} = [];
+    if isempty(mCells)
         continue;
     end
 
-    if isempty(mCells)
-        allCellCounts{pIdx} = [];
-        allTrapNumbers{pIdx} = [];
-        allStrains{pIdx} = [];
+    % Get valid traps
+    S = getValidTraps(expInfoObj, pIdx, switchFrame, 1, ...
+        'Traps', 1:nGrowthChannels);
+    
+    validTraps = [S([S.isValid]).trap]';
+
+    if isempty(validTraps)
         continue;
     end
 
@@ -102,38 +106,26 @@ for pIdx = 1:nPos
 
     % Ensure switchFrame and requested frames are within computed range
     if switchFrame > maxF
-
-        % No usable data for requested timepoints
-        allCellCounts{pIdx}  = [];
-        allTrapNumbers{pIdx} = [];
-        allStrains{pIdx}     = [];
         continue;
     end
 
     % counts(trap, frame) for frames 1..maxF
     counts = zeros(nGrowthChannels, maxF, 'single');
 
-    % Build counts matrix once
+    % Build counts matrix
     for ci = 1:numel(mCells)
         if ~goodGlobal(ci)
             continue;
         end
 
         t = gc(ci);
-        if t < 1 || t > nGrowthChannels
-            continue;
-        end
 
         % Segmentation vector coverage: frames are bf(ci) ... bf(ci)+numel(seg)-1
         seg = mCells(ci).badSegmentations;
-        if isempty(seg)
-            continue;
-        end
-        segMaxFrame = bf(ci) + numel(seg) - 1;
 
         % Frame interval where this cell could contribute
-        f1 = max([bf(ci), minNeeded, 1]);
-        f2 = min([lf(ci), maxF, segMaxFrame]);
+        f1 = max(bf(ci), minNeeded);
+        f2 = min(lf(ci), maxF);
 
         if f2 < f1
             continue;
@@ -143,31 +135,22 @@ for pIdx = 1:nPos
         idx2 = f2 - bf(ci) + 1;
 
         ok = (seg(idx1:idx2) == 0);
-        if ~any(ok)
-            continue;
-        end
-
         frames = f1:f2;
         frames = frames(ok);
 
         % Increment counts for those frames
         counts(t, frames) = counts(t, frames) + 1;
+
     end
 
-    % Identify valid traps at switchFrame (>= 3 good, well segmented cells at switch)
-    trapCountsAtSwitch = counts(:, switchFrame).';
-    validTraps = find(trapCountsAtSwitch >= 3);
     nValidTraps = numel(validTraps);
 
     if nValidTraps == 0
-        allCellCounts{pIdx}  = [];
-        allTrapNumbers{pIdx} = [];
-        allStrains{pIdx} = [];
         continue;
     end
 
     % Prepare output arrays
-    trapCounts  = nan(nValidTraps, numel(timePoints));
+    trapCounts = nan(nValidTraps, numel(timePoints));
     trapNumbers = (pIdx - 1) * nGrowthChannels + validTraps(:);
 
     % Compute windowed means using cumulative sums
@@ -180,7 +163,7 @@ for pIdx = 1:nPos
         for jj = 1:numel(timePoints)
             f = timePoints(jj);
 
-            if f < 1 || f > maxF
+            if f > maxF
                 trapCounts(ii, jj) = NaN;
                 continue;
             end
@@ -189,7 +172,6 @@ for pIdx = 1:nPos
                 fStart = max(f - windowSize + 1, 1);
                 fEnd = f;
             else
-                halfw = floor(windowSize/2);
                 fStart = max(f - halfw, 1);
                 fEnd = min(f + halfw, maxF);
             end
@@ -201,16 +183,18 @@ for pIdx = 1:nPos
         end
     end
 
-    % Assign strain label by position (first half vs second half)
-    if pIdx <= nPos/2
-        strain = strainNames(1);
+    % Assign strain by position ranges
+    if ismember(pIdx, posLabel1)
+        strain = strainNames(1); % labels(1)
+    elseif ismember(pIdx, posLabel2)
+        strain = strainNames(2); % labels(2)
     else
-        strain = strainNames(2);
+        strain = ""; % or unassigned
     end
 
-    allCellCounts{pIdx}  = trapCounts;
+    allCellCounts{pIdx} = trapCounts;
     allTrapNumbers{pIdx} = trapNumbers;
-    allStrains{pIdx}     = repmat(strain, size(trapCounts, 1), 1);
+    allStrains{pIdx} = repmat(strain, size(trapCounts, 1), 1);
 end
 
 %% Write table
@@ -229,7 +213,7 @@ allStrainsCol = vertcat(allStrains{:});
 
 varNames = strcat(string(timeOffsets), " min");
 T = array2table(allCellCountsMat, 'VariableNames', varNames);
-T.TrapNumber = allTrapNumbersCol;
+T.Trap = allTrapNumbersCol;
 T.Strain = allStrainsCol;
 
 writetable(T, tablefilename);

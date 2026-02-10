@@ -1,31 +1,65 @@
-function T = getTrapMotherCellLineageGrowthRatesLISA(expInfoObj,window,fittype,switchFrame,dt,strain,posRange,yThresh)
+function T = getTrapMotherCellLineageGrowthRatesSZ(expInfoObj, switchFrame, dt, strain, varargin)
+
 % T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange)
 % This function estimates the growth rate of the mother cells at the bottom of 
 % mother-machine traps and their descendants for a strain treated with 
 % antibiotics. Mother cells before the switch must be growing.
+%
+% Inputs:
+% - expInfoObj: expInfo object with image analysis info
+% - window: scalar or tuple
+% - fittype: string/char, select from {'exp1','poly1'}
+% - dt: scalar
+%
+% Name-value pairs:
+% - 'Window': [NB NF] or scalar, default [10 0]
+% - 'FitType': 'exp1' or 'poly1', default 'exp1'
+% - 'Positions': scalar/array, default []
+% - 'Traps': scalar/array, default []
+% - 'YThresh': scalar or [], default []
 
-% Parse parameters
-if nargin<6, strain = "";end
-if nargin<7, posRange = [];end
-if nargin<8, yThresh = [];end
+%% Parse inputs
+p = inputParser;
+
+p.addParameter('Window', [10 0], @(x) isnumeric(x) && (isscalar(x) || (numel(x)==2)));
+p.addParameter('FitType', 'exp1', @(x) (ischar(x) || isstring(x)));
+
+p.addParameter('Positions', [], @(x) isnumeric(x));
+p.addParameter('Traps', [], @(x) isnumeric(x));
+p.addParameter('YThresh', []);
+p.addParameter('Verbose', true);
+p.parse(varargin{:});
+
+window = p.Results.Window;
+fittype = char(p.Results.FitType); % ensure char
+posRange = p.Results.Positions;
+trapRange = p.Results.Traps;
+yThresh = p.Results.YThresh;
 
 % Hard-coded parameters
 minLength = 5; % min track length for growth rate fitting
 maxGap = 5/dt; % max allowed gap in lineage tracking is 5 min
-preMarginMinutes = 20; % How long before the switch one demands clean growth for mother cells
+minCellGR = 0.002; % min allowed cell growth rate before adding AB
+preMarginMinutes = 15; % How long before the switch one demands clean growth for mother cells
 trackFrameRange = [switchFrame-10/dt, switchFrame+5/dt]; 
 
 posList = expInfoObj.getPositionList();
 if isempty(posRange), posRange = 1:length(posList); end
 param = expInfoObj.getParameters();
 nGrowthChannels = param.nGrowthChannels - length(param.emptyChannel);
+if isempty(trapRange), trapRange = 1:nGrowthChannels; end
+
+%% Main code
 
 allGrowthRates = []; % growth rates
 allFrames = []; % frames
 allTraps = []; % traps
 allStrains = [];
 
-for pi = 1%1:length(posRange)
+preMarginFrames = round(preMarginMinutes / dt);
+cutoffFrame = max(switchFrame - preMarginFrames, 1);
+
+for pi = 1:length(posRange)
     pos = posRange(pi);
 
     % Load cell data for the current position
@@ -59,9 +93,9 @@ for pi = 1%1:length(posRange)
     end
 
     % Geometry/orientation
-    dy = quantile(cellLengths(birthFrames < switchFrame & cellLengths > 0), 0.1) / 2;
+    dy = quantile(cellLengths(birthFrames < switchFrame), 0.1) / 2;
     meanshifty = mean(shifty(lastFrames < switchFrame), 'omitnan');
-    fprintf('%s(%d): meanshifty = %.2f\n', posList{pos}, pos, meanshifty);
+    % fprintf('%s(%d): meanshifty = %.2f\n', posList{pos}, pos, meanshifty);
 
     % If mother cells at bottom, shift y so bottom has larger y
     if meanshifty < 0
@@ -78,27 +112,31 @@ for pi = 1%1:length(posRange)
     end
 
     % Logical mask for "good growth before switch"
-    goodGrowth = (cellGR >= 0.002) & ~isnan(cellGR);
+    goodGrowth = cellGR >= minCellGR;
 
     posFrames = [];
     posGrowthRates = [];
     posTraps = [];
-    for trap=30
-    %parfor trap = 1:nGrowthChannels
+    parfor ti = 1:length(trapRange)
+        trap = trapRange(ti);
 
         % Find trap mother cells and sort them by the birth frame
-        indDivTrap = (cellTraps == trap & isDividing);  % Same logic as old code
+        % Find trap mother cells that grow before media switch
+        indGoodGRTrap = (cellTraps == trap & goodGrowth);  % Same logic as old code
 
-        if any(indDivTrap)
+        if any(indGoodGRTrap)
             if meanshifty > 0
                 % Mother cells at the top
-                yCutOff = min(cellYcoord(indDivTrap), [], 'omitnan') + dy; % Identifies "mother band"
+                yCutOff = min(cellYcoord(indGoodGRTrap), [], 'omitnan') + dy; % Identifies "mother band"
                 trapMotherCellIds = find(cellTraps == trap & cellYcoord < yCutOff);
             else
                 % Mother cells at the bottom
-                yCutOff = max(cellYcoord(indDivTrap), [], 'omitnan') - dy;
+                yCutOff = max(cellYcoord(indGoodGRTrap), [], 'omitnan') - dy;
                 trapMotherCellIds = find(cellTraps == trap & cellYcoord > yCutOff);
             end
+            % Discard trap mother cells that do not grow before the switch
+            removeInd = birthFrames(trapMotherCellIds)<cutoffFrame & ~goodGrowth(trapMotherCellIds);
+            trapMotherCellIds(removeInd)=[];
         else
             trapMotherCellIds = [];
         end
@@ -107,7 +145,7 @@ for pi = 1%1:length(posRange)
         [trapBirthFrames, sortInd] = sort(birthFrames(trapMotherCellIds));
 
         if numel(trapBirthFrames) > numel(unique(trapBirthFrames))
-            warning('Detected two trap mother cells in the same frame in trap %d, pos %d', trap, pos)
+            warning('Detected two trap mother cells in the frame in trap %d, pos %d', trap, pos)
         end
 
         trapMotherCellIds = trapMotherCellIds(sortInd);
@@ -117,74 +155,6 @@ for pi = 1%1:length(posRange)
         if ~isempty(trapBirthFrames) && trapBirthFrames(1) > trackFrameRange(1)
             trapMotherCellIds = [];
         end
-
-        %%%% ADDED %%%% 
-
-        if ~isempty(trapMotherCellIds)
-
-            preMarginFrames = round(preMarginMinutes / dt);
-            cutoffFrame = max(switchFrame - preMarginFrames, 1);
-            
-            % Logical mask (which mothers are born long before the switch?)
-            preSwitchMask = birthFrames(trapMotherCellIds) < cutoffFrame;
-            preSwitchMotherIds = trapMotherCellIds(preSwitchMask);
-
-            if ~isempty(preSwitchMotherIds)
-
-                % Group these pre-switch mothers by their birth frame
-                preBirths = birthFrames(preSwitchMotherIds);
-                uniqueBirths = unique(preBirths);
-
-                badTrap = false;
-
-                % Decide which pre-switch mothers to keep
-                keepPreSwitchMask = true(size(preSwitchMotherIds));
-
-                for k = 1:numel(uniqueBirths)
-                    b = uniqueBirths(k);
-
-                    % Indices into preSwitchMotherIds for this birth frame
-                    groupIdx = find(preBirths == b);
-                    groupIds = preSwitchMotherIds(groupIdx);
-
-                    % Growth mask for this group
-                    goodInGroup = goodGrowth(groupIds);
-
-                    % DEBUG (print group composition)
-                    if numel(groupIds) > 1
-                        nGood = nnz(goodInGroup);
-                        idStr = strtrim(sprintf('%d ', groupIds));
-                        fprintf('Pos %d, trap %d, birthFrame %d: mothers [%s], %d with goodGrowth\n', ...
-                                pos, trap, b, idStr, nGood);
-                    end
-
-                    % Require that at least one mother in this birth frame has good growth
-                    if ~any(goodInGroup)
-                        badTrap = true;
-                        break;  % no good mothers in this frame --> reject entire trap
-                    end
-
-                    % Otherwise, mark bad growth mothers in this frame for removal
-                    keepPreSwitchMask(groupIdx(~goodInGroup)) = false;
-                end
-
-                if badTrap
-                    % If any birth frame group has no good growing mother, drop this trap
-                    trapMotherCellIds = [];
-                else
-                    % Keep only the good pre-switch mothers + all post-switch mothers
-                    preSwitchMotherIds = preSwitchMotherIds(keepPreSwitchMask);
-                    postSwitchMotherIds = trapMotherCellIds(~preSwitchMask);
-
-                    % Make sure both are column vectors for vertical concatenation
-                    preSwitchMotherIds  = preSwitchMotherIds(:);
-                    postSwitchMotherIds = postSwitchMotherIds(:);
-                    trapMotherCellIds = [preSwitchMotherIds; postSwitchMotherIds];
-                end
-            end
-        end
-
-        %%%%%%%%
 
         % Lineage growth rate computation
         trapGrowthRates = [];

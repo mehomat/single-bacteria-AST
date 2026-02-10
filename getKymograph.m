@@ -1,4 +1,4 @@
-function Im = getKymograph(eln, sheet, positionRes, trapRes, positionSus, trapSus, endFrame, kymographfilename, varargin)
+function Im = getKymograph(eln, sheet, positionRes, trapRes, positionSus, trapSus, endFrame, kymographfilename, outputDir)
 
 % getKymograph
 % Kymograph montage
@@ -12,33 +12,23 @@ function Im = getKymograph(eln, sheet, positionRes, trapRes, positionSus, trapSu
 % - trapSus: scalar, trap for susceptible strain
 % - endFrame: scalar, end frame of the experiment (must be divisible by 5)
 % - kymographfilename: string/char, output tiff filename to write
-%
-% Name-value pairs:
-% - 'CodeDir': string/char, default 'code'
-% - 'OutputDir': string/char, required by the wrapper
+% - outputDir: string/char, where the expInfoObj is loaded from
 %
 % Output:
-% T: Kymograph montage
-
-%% Parse inputs
-
-p = inputParser;
-p.addParameter('CodeDir', 'code');
-p.addParameter('OutputDir', '');
-p.parse(varargin{:});
-
-outputDir = p.Results.OutputDir;
+% - Kymograph montage
 
 %% Load experiment data from OutputDir
 
 expInfoObj = loadExpInfo(outputDir);
 
 %% Susceptible strain kymograph
+
 p = positionSus;
 trap = trapSus;
 imSus = displayCellsInMMTrapPhase(expInfoObj, p, trap,'Range', 1:5:endFrame, 'ShowOutlines', 0);
 
 %% Resistant strain kymograph
+
 p = positionRes;
 trap = trapRes;
 imRes = displayCellsInMMTrapPhase(expInfoObj, p, trap, 'Range', 1:5:endFrame, 'ShowOutlines', 0);
@@ -59,6 +49,7 @@ if ismember(eln, incorrect)
 end
 
 %% Crop
+
 [rows1, cols1] = size(imRes);
 [rows2, cols2] = size(imSus);
 targetCols = min(cols1, cols2);
@@ -66,6 +57,7 @@ imRes = imRes(:, 1:targetCols);
 imSus = imSus(:, 1:targetCols);
 
 %% Choose rows to extract
+
 rows_res = max(1,700):min(rows1,1470);
 rows_sus = max(1,700):min(rows2,1470);
 
@@ -85,6 +77,8 @@ end
 imwrite(Im, kymographfilename);
 
 %% Display
+
 figure;
 imshow(Im);
+
 end
