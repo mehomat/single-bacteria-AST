@@ -229,8 +229,8 @@ posList = expInfoObj.getPositionList();
 
 %% Extract lineages 
 
-[framesRes, areasRes, motherRes] = extract_lineage(positionRes, trapRes, labelRes);
-[framesSus, areasSus, motherSus] = extract_lineage(positionSus, trapSus, labelSus);
+[framesRes, areasRes, motherRes] = extract_lineage(positionRes, trapRes);
+[framesSus, areasSus, motherSus] = extract_lineage(positionSus, trapSus);
 
 %% Combine and save
 
