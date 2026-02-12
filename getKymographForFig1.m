@@ -25,6 +25,7 @@ imPhase = displayCellsInMMTrapPhase(expInfoObj, pos, trap, ...
 imSeg = displayCellsInMMTrapPhase(expInfoObj, pos, trap, ...
     'Range', 1:5:endFrame, 'ShowSegmentation', 1, 'ShowOutlines', 0);
 
+
 % Sizes 
 rows1 = size(imPhase, 1); cols1 = size(imPhase, 2);
 rows2 = size(imSeg, 1); cols2 = size(imSeg, 2);

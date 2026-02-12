@@ -1,13 +1,8 @@
-function T = getSingleLineageCellAreasFig1(pIdx, trapIdx, endFrame, varargin)
+function T = getSingleLineageCellAreasFig1(pIdx, trapIdx, endFrame, outputDir, varargin)
 
 % T = getSingleLineageCellAreasFig1(pIdx, trapIdx, endFrame, 'OutputDir', outputDir)
 % One lineage (lower child) from trap mother, using the same trap-mother logic
-% as getSingleLineageCellAreas. Returns table(Frame, Area).
-
-p = inputParser;
-p.addParameter('OutputDir', '');
-p.parse(varargin{:});
-outputDir = p.Results.OutputDir;
+% as getSingleLineageCellAreas. Returns table(Frame, Area)
 
 expInfoObj = loadExpInfo(outputDir);
 posList = expInfoObj.getPositionList();
@@ -22,7 +17,7 @@ c = mCells(cid);
 frames = [];
 areas  = [];
 
-while ~isempty(c) && (c.isBadCell == 0 || c.isBadCell == 2) && c.birthFrame <= endFrame
+while ~isempty(c) && (c.isBadCell == 0 || c.isBadCell == 4) && c.birthFrame <= endFrame
 
     f1 = c.birthFrame;
     f2 = min(c.lastFrame, endFrame);
@@ -53,9 +48,13 @@ while ~isempty(c) && (c.isBadCell == 0 || c.isBadCell == 2) && c.birthFrame <= e
         dc2_y = NaN; if ~isempty(idx2), dc2_y = dc2.centroids(idx2,2); end
 
         if dc1_y > dc2_y
+
             c = dc1; % lower child
+
         else
+
             c = dc2;
+
         end
     end
 end
@@ -69,15 +68,21 @@ function trapMotherCellIds = find_trap_mother_ids_local(mCells, trapIdx)
 
 trapMotherCellIds = [];
 
-birthFrames = [mCells.birthFrame];
-lastFrames  = [mCells.lastFrame];
-cellTraps = [mCells.growthChannel];
+N = numel(mCells);
+
+% Force one scalar per cell 
+birthFrames = arrayfun(@(x) double(x.birthFrame), mCells).';
+
+% Force first element
+cellTraps = arrayfun(@(x) double(x.growthChannel(1)), mCells).';
 
 indTrap = (cellTraps == trapIdx);
+indTrap = indTrap(:); % column vector
 
-cellYcoord = nan(size(cellTraps));
-cellLengths = nan(size(cellTraps));
-shifty = nan(size(cellTraps));
+cellYcoord = nan(N,1);
+cellLengths = nan(N,1);
+shifty = nan(N,1);
+
 
 for i = 1:numel(mCells)
     f = find(mCells(i).badSegmentations == 0, 1);
@@ -113,11 +118,11 @@ end
 if meanshifty > 0
     yMin = min(cellYcoord(indTrap), [], 'omitnan');
     yCutOff = yMin + dy;
-    trapMotherCellIds = find(indTrap & cellYcoord < yCutOff);
+    trapMotherCellIds = find(indTrap & (cellYcoord < yCutOff));
 else
     yMax = max(cellYcoord(indTrap), [], 'omitnan');
     yCutOff = yMax - dy;
-    trapMotherCellIds = find(indTrap & cellYcoord > yCutOff);
+    trapMotherCellIds = find(indTrap & (cellYcoord > yCutOff));
 end
 
 [~, sortInd] = sort(birthFrames(trapMotherCellIds));

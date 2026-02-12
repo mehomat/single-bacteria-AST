@@ -5,13 +5,13 @@ function T = computeDivisionSizes(outputDir, cutoffFrame, posIdxRange, varargin)
 %
 % Input:
 % - outputDir: string/char, where the expInfoObj is loaded from
-% - cutoffFrame: scalar, exclude cells with lastFrame >= cutoffFrame
+% - cutoffFrame: scalar, exclude cells with lastFrame > cutoffFrame
 % - posIdxRange: numeric indices into expInfoObj.getPositionList()
 %
 % Name-value pairs:
-% - lengthCutOff: 
-% - parentLengthCutOff: 
-% - daughterLengthCutOff:
+% - lengthCutOff: cell tracks
+% - parentLengthCutOff: parent length
+% - daughterLengthCutOff: daughter length
 %
 % Output
 % - T: table with columns: Gen 1, Gen 2, Gap, Position
@@ -52,16 +52,23 @@ function T = computeDivisionSizes(outputDir, cutoffFrame, posIdxRange, varargin)
         end
 
         lastFrames = [mCells.lastFrame];
-        [divAreas, genIndex] = getDivisionAreas(mCells, lengthCutOff, parentLengthCutOff, daughterLengthCutOff);
+        [divAreas, genIndex, divFrames] = getDivisionAreasForDivSizes(mCells, lengthCutOff, daughterLengthCutOff);
 
         divAreas2 = nan(size(lastFrames));
-        divAreas2(genIndex) = divAreas;
+        divFrames2 = nan(size(lastFrames));
 
-        % Exclude post-cutoff
-        divAreas2(lastFrames >= cutoffFrame) = nan;
+        divAreas2(genIndex) = divAreas;
+        divFrames2(genIndex) = divFrames;
+
+        % Exclude division events post cutoff
+        divAreas2(divFrames2 > cutoffFrame) = nan;
 
         for N = 2:4
             lineages = selectCellLineages(mCells, N, lengthCutOff, parentLengthCutOff, daughterLengthCutOff);
+
+            % Added for verification
+            fprintf('Position %s | N=%d | Raw lineages: %d\n', ...
+                pos, N, size(lineages,1));
 
             if isempty(lineages)
                 continue;
@@ -82,9 +89,13 @@ function T = computeDivisionSizes(outputDir, cutoffFrame, posIdxRange, varargin)
             good = ~any(isnan(linDivAreas), 2);
             linDivAreas = linDivAreas(good, :);
 
+            % Added for verification
+            fprintf('Position %s | N=%d | Valid after area filter: %d\n', ...
+                pos, N, size(linDivAreas,1));
             if isempty(linDivAreas)
+                fprintf('Position %s | N=%d | No surviving full lineages\n', pos, N);
                 continue;
-            end
+            end 
 
             % Keep first and last only, add gap
             g1 = linDivAreas(:, 1);

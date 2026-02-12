@@ -4,7 +4,9 @@ function lineages = selectCellLineages(mCells, N, varargin)
 %
 % Each cell in the lineage must satisfy the following conditions:
 % 1) to be an "OK" cell.
-% 2) If parentLengthCutOff > 0, the cell has an "OK" parent cell.
+% 2) Parent rule:
+% - If the cell has a parent and parentLengthCutOff > 0, the parent must be "OK".
+% - If the cell has no parent (founder cell at experiment start), it is still allowed.
 % 3) If daughterLengthCutOff > 0, the cell has two "OK" daughter cells.
 % 4) If sisterLengthCutOff > 0, the cell has an "OK" sister cell.
 %
