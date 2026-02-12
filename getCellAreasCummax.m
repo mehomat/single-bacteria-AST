@@ -7,7 +7,6 @@ function T = getCellAreasCummax(switchFrame, labels, tablefilename, posRange, ou
 % - switchFrame: scalar, frame index of media switch
 % - labels: string array (2 elements) 
 % - tablefilename: string/char, output CSV filename to write
-% - dataELN: string/char, dataELN
 % - posRange: 1x2 cell array where:
 %  posRange{1} = numeric vector of positions for labels(1)
 %  posRange{2} = numeric vector of positions for labels(2)
