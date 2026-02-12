@@ -72,7 +72,7 @@ end
 function lin = selectLineage(c, N, L, pL, dL, sL, branch)
     lin = [];
     if isOK(c,L,1)
-        if isOK(c.parent,pL)
+        if isempty(c.parent) || isOK(c.parent, pL)
             if ~isempty(c.parent)
                 if c.parent.descendants(1).id == c.id
                     sc = c.parent.descendants(2);
