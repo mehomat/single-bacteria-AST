@@ -1,4 +1,4 @@
-function T = getTrapMotherCellLineageGrowthRates(expInfoObj, switchFrame, dt, strain, varargin)
+function [T, stats] = getTrapMotherCellLineageGrowthRates(expInfoObj, switchFrame, dt, strain, varargin)
 
 % Computes lineage growth rates per trap (mother + descendants) and keeps only
 % traps whose mother selection passes pre-switch growth QC
@@ -57,6 +57,17 @@ allGrowthRates = [];
 allFrames = [];
 allTraps = [];
 
+% Initialize stats
+stats = struct();
+stats.Strain = string(strain);
+stats.TotalNonEmptyTraps = 0;
+stats.TotalIncludedTraps = 0;
+stats.PercentIncludedTraps = NaN;
+
+% Store trap inclusion counts per position
+nNonEmptyTraps_perPos = nan(length(posRange), 1);
+nIncludedTraps_perPos = nan(length(posRange), 1);
+
 for pi = 1:length(posRange)
     pos = posRange(pi);
 
@@ -64,13 +75,15 @@ for pi = 1:length(posRange)
     mCells = expInfoObj.getMCells(pos);
 
     % Use helper to get valid traps + mother IDs
-    S = getValidTraps(expInfoObj, pos, switchFrame, dt, ...
-        'Traps', trapRange, ...
-        'YThresh', yThresh, ...
-        'MinCellGR', minCellGR, ...
-        'PreMarginMinutes', preMarginMinutes, ...
-        'TrackFrameRange', trackFrameRange, ...
-        'RequireDividing', false);
+    S = getValidTraps(expInfoObj, pos, switchFrame, dt);
+
+    if ~isempty(S)
+        nNonEmptyTraps_perPos(pi) = S(1).nNonEmptyTraps;
+        nIncludedTraps_perPos(pi) = S(1).nIncludedTraps;
+    else
+        nNonEmptyTraps_perPos(pi) = 0;
+        nIncludedTraps_perPos(pi) = 0;
+    end
 
     validMask = [S.isValid];
     motherIdCells = {S.motherIds};
@@ -157,7 +170,19 @@ for pi = 1:length(posRange)
 
 end
 
-% Build output table
+%% Stats for this posRange (strain)
+
+stats.TotalNonEmptyTraps = sum(nNonEmptyTraps_perPos, 'omitnan');
+stats.TotalIncludedTraps = sum(nIncludedTraps_perPos, 'omitnan');
+
+if stats.TotalNonEmptyTraps > 0
+    stats.PercentIncludedTraps = 100 * stats.TotalIncludedTraps / stats.TotalNonEmptyTraps;
+else
+    stats.PercentIncludedTraps = NaN;
+end
+
+
+%% Build output table
 if ~isempty(strain)
     allStrains = repmat(string(strain), size(allTraps));
     T = table(allGrowthRates, allFrames, allTraps, allStrains, ...

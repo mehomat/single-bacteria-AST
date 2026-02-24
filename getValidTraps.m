@@ -27,6 +27,11 @@ function S = getValidTraps(expInfoObj, pos, switchFrame, dt, varargin)
 % checks and if motherIds is not empty
 % S(ti).growthDir is the growth direction of the cells based on the sign of
 % meanshifty
+% S(ti).includedTraps are trap indices classified as valid
+% S(ti).pctIncludedTraps is the percentage of included traps computed as
+% 100*(nIncludedTraps/nNonEmptyTraps)
+% S(ti).nNonEmptyTraps are traps in trapRange that contained at least one cell
+% S(ti).nIncludedTraps are the number of included traps
 
 p = inputParser;
 p.addParameter('Traps', [], @(x) isnumeric(x));
@@ -110,9 +115,21 @@ cutoffFrame = max(switchFrame - preMarginFrames, 1);
 
 % Output
 nTraps = numel(trapRange);
-S(nTraps) = struct('pos', [], 'trap', [], 'trapID', [], 'motherIds', [],  'isValid', [], 'growthDir', []);
+S(nTraps) = struct('pos', [], 'trap', [], 'trapID', [], 'motherIds', [],  'isValid', [], 'growthDir', [], ...
+    'includedTraps', [], 'pctIncludedTraps', [], 'nNonEmptyTraps', [], 'nIncludedTraps', []);
 
 trapIDs = (pos-1) * nGrowthChannels + trapRange;
+
+% A trap is non empty if any cell belongs to it (independent of criteria)
+isNonEmptyTrap = false(size(trapRange));
+for ti = 1:numel(trapRange)
+    isNonEmptyTrap(ti) = any(cellTraps == trapRange(ti));
+end
+nNonEmptyTraps = sum(isNonEmptyTrap);
+
+% Track which traps end up incldued (valid) among trapRange
+includedFlags = false(size(trapRange));
+
 for ti = 1:numel(trapRange)
     trap = trapRange(ti);
 
@@ -170,7 +187,29 @@ for ti = 1:numel(trapRange)
     S(ti).motherIds = trapMotherCellIds(:); % column vector
     S(ti).isValid = isValid && ~isempty(trapMotherCellIds);
     S(ti).growthDir = growthDir; 
+
+    % Store inclusion flag for this trap
+    includedFlags(ti) = S(ti).isValid;
    
+end
+
+% Compute included percentage (excluding empty traps)
+nIncludedTraps = sum(includedFlags & isNonEmptyTrap);
+
+if nNonEmptyTraps == 0
+    pctIncludedTraps = NaN; 
+else
+    pctIncludedTraps = 100 * (nIncludedTraps / nNonEmptyTraps);
+end
+
+includedTraps = trapRange(includedFlags); % trap indices included
+
+% Store summary in every struct
+for ti = 1:numel(trapRange)
+    S(ti).includedTraps = includedTraps;
+    S(ti).pctIncludedTraps = pctIncludedTraps;
+    S(ti).nNonEmptyTraps = nNonEmptyTraps;
+    S(ti).nIncludedTraps = nIncludedTraps;
 end
 
 end

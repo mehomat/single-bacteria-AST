@@ -52,7 +52,6 @@ strainNames = [labels(1), labels(2)];
 posLabel1 = unique(posRange{1}(:).');
 posLabel2 = unique(posRange{2}(:).');
 
-
 % Define frame range that actually needs to be computed
 if useTrailingWindow
     minNeeded = min(timePoints) - (windowSize - 1);
@@ -71,6 +70,10 @@ allCellCounts  = cell(nPos, 1);
 allStrains = cell(nPos, 1);
 allTrapNumbers = cell(nPos, 1);
 
+% Store trap inclusion counts per position
+nNonEmptyTraps_perPos = nan(nPos, 1);
+nIncludedTraps_perPos = nan(nPos, 1);
+
 %% Loop over positions
 
 for pIdx = 1:nPos
@@ -84,6 +87,14 @@ for pIdx = 1:nPos
     % Get valid traps
     S = getValidTraps(expInfoObj, pIdx, switchFrame, 1, ...
         'Traps', 1:nGrowthChannels);
+
+    if ~isempty(S)
+        nNonEmptyTraps_perPos(pIdx) = S(1).nNonEmptyTraps;
+        nIncludedTraps_perPos(pIdx) = S(1).nIncludedTraps;
+    else
+        nNonEmptyTraps_perPos(pIdx) = 0;
+        nIncludedTraps_perPos(pIdx) = 0;
+    end
     
     validTraps = [S([S.isValid]).trap]';
 
@@ -196,6 +207,42 @@ for pIdx = 1:nPos
     allTrapNumbers{pIdx} = trapNumbers;
     allStrains{pIdx} = repmat(strain, size(trapCounts, 1), 1);
 end
+
+%%
+
+% Totals per strain over the requested posRange 
+idxLabel1 = ismember((1:length(posList))', posLabel1);
+idxLabel2 = ismember((1:length(posList))', posLabel2);
+
+totalNonEmpty_1 = sum(nNonEmptyTraps_perPos(idxLabel1), 'omitnan');
+totalIncluded_1 = sum(nIncludedTraps_perPos(idxLabel1), 'omitnan');
+
+totalNonEmpty_2 = sum(nNonEmptyTraps_perPos(idxLabel2), 'omitnan');
+totalIncluded_2 = sum(nIncludedTraps_perPos(idxLabel2), 'omitnan');
+
+if totalNonEmpty_1 == 0
+    pctIncluded_1 = NaN;
+else
+    pctIncluded_1 = 100 * totalIncluded_1 / totalNonEmpty_1;
+end
+
+if totalNonEmpty_2 == 0
+    pctIncluded_2 = NaN;
+else
+    pctIncluded_2 = 100 * totalIncluded_2 / totalNonEmpty_2;
+end
+
+% Build + write summary CSV
+
+Summary = table( ...
+    strainNames(:), ...
+    [totalNonEmpty_1; totalNonEmpty_2], ...
+    [totalIncluded_1; totalIncluded_2], ...
+    [pctIncluded_1; pctIncluded_2], ...
+    'VariableNames', {'Strain','TotalNonEmptyTraps','TotalIncludedTraps','PercentIncludedTraps'});
+
+summaryFilename = replace(string(tablefilename), ".csv", "_Summary.csv");
+writetable(Summary, summaryFilename);
 
 %% Write table
 if all(cellfun(@isempty, allCellCounts))

@@ -16,8 +16,6 @@ function T = getCellAreasCummaxUPD(switchFrame, labels, tablefilename, posRange,
 % - 'TimeOffsets': numeric row vector, default [0 30 60 90]
 % - 'MotherFrac': fraction of the trap, from constriction side, that counts 
 % as the mother region (along the y direction)
-% - 'PreMarginMinutes': scalar, passed to getValidTraps so mothers are 
-% defined right up to the switch
 %
 % Output:
 % - T: table of max cell areas
@@ -33,14 +31,10 @@ p.addParameter('TimeOffsets', [0 30 60 90]); % in frames
 % - If constriction is at bottom --> mother region = bottom fraction of trap
 p.addParameter('MotherFrac', 1/3, @(x) isnumeric(x) && isscalar(x) && x>0 && x<=1);
 
-
-p.addParameter('PreMarginMinutes', 0, @(x) isnumeric(x) && isscalar(x) && x>=0);
 p.parse(varargin{:});
 
-% Force to be a row vector
 timeOffsets = p.Results.TimeOffsets(:).'; % Force to be a row vector
 motherFrac = p.Results.MotherFrac;
-preMarginMinutes = p.Results.PreMarginMinutes;
 
 %% Load experiment data
 
@@ -121,6 +115,10 @@ allAreaBeforeSwitch = cell(length(posList),1); % (nTraps x 1)
 % allTrapIDs{pp} will contain global trap IDs for each trap in that position
 allTrapIDs = cell(length(posList),1);
 
+% Store trap inclusion counts per position
+nNonEmptyTraps_perPos = nan(length(posList), 1);
+nIncludedTraps_perPos = nan(length(posList), 1);
+
 %% Loop over positions
 
 parfor pp = 1:length(posList)
@@ -131,8 +129,15 @@ parfor pp = 1:length(posList)
     % Get valid traps + mother IDs + growth direction
     S = getValidTraps(expInfoObj, pp, switchFrame, 1, ...
         'Traps', 1:nGrowthChannels, ...
-        'PreMarginMinutes', preMarginMinutes, ...
         'RequireDividingBeforeSwitch', 1);
+
+    if ~isempty(S)
+        nNonEmptyTraps_perPos(pp) = S(1).nNonEmptyTraps;
+        nIncludedTraps_perPos(pp) = S(1).nIncludedTraps;
+    else
+        nNonEmptyTraps_perPos(pp) = 0;
+        nIncludedTraps_perPos(pp) = 0;
+    end
 
     % Valid traps that passed QC
     validTraps = [S([S.isValid]).trap]';
@@ -191,10 +196,6 @@ parfor pp = 1:length(posList)
 
         % motherIds are indices into mCells
         mothers = S(si).motherIds(:);
-
-        % Mothers are already filtered by getValidTraps to end before switch
-        motherId = mothers(end);
-        areaBeforeSwitch(t) = getLastGoodAreaBeforeOrAtFrame(mCells(motherId), switchFrame);
 
         % Keep last mother before or at switch (already sorted by getValidTraps by birthFrame)
         motherId = mothers(end);
@@ -379,6 +380,40 @@ parfor pp = 1:length(posList)
     allStrains{pp} = repmat(strain, size(normalizedAreaAfterSwitch,1), 1);
 
 end
+
+% Totals per strain over the requested posRange 
+idxLabel1 = ismember((1:length(posList))', posLabel1);
+idxLabel2 = ismember((1:length(posList))', posLabel2);
+
+totalNonEmpty_1 = sum(nNonEmptyTraps_perPos(idxLabel1), 'omitnan');
+totalIncluded_1 = sum(nIncludedTraps_perPos(idxLabel1), 'omitnan');
+
+totalNonEmpty_2 = sum(nNonEmptyTraps_perPos(idxLabel2), 'omitnan');
+totalIncluded_2 = sum(nIncludedTraps_perPos(idxLabel2), 'omitnan');
+
+if totalNonEmpty_1 == 0
+    pctIncluded_1 = NaN;
+else
+    pctIncluded_1 = 100 * totalIncluded_1 / totalNonEmpty_1;
+end
+
+if totalNonEmpty_2 == 0
+    pctIncluded_2 = NaN;
+else
+    pctIncluded_2 = 100 * totalIncluded_2 / totalNonEmpty_2;
+end
+
+%% Build + write summary CSV
+
+Summary = table( ...
+    strainNames(:), ...
+    [totalNonEmpty_1; totalNonEmpty_2], ...
+    [totalIncluded_1; totalIncluded_2], ...
+    [pctIncluded_1; pctIncluded_2], ...
+    'VariableNames', {'Strain','TotalNonEmptyTraps','TotalIncludedTraps','PercentIncludedTraps'});
+
+summaryFilename = replace(string(tablefilename), ".csv", "_Summary.csv");
+writetable(Summary, summaryFilename);
 
 %% Collect and write
 
