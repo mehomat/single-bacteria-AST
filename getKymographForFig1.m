@@ -4,7 +4,7 @@ function Im = getKymographForFig1(pos, trap, endFrame, upperLimit, lowerLimit, k
 % Create kymograph montage for one position/trap:
 % [phase kymograph, segmented mask kymograph]
 %
-% Inputs:
+% Input:
 % - pos: scalar position (the actual position number to read from expInfo)
 % - trap: scalar trap number
 % - endFrame: scalar end frame of experiment
@@ -14,7 +14,7 @@ function Im = getKymographForFig1(pos, trap, endFrame, upperLimit, lowerLimit, k
 % - outputDir: string/char, where the expInfoObj is loaded from
 %
 % Output:
-% - Kymograph montage including phase contrast image and segmented mask
+% - Kymograph montage including phase contrast image and segmented output
 
 % Load expInfoObj
 expInfoObj = loadExpInfo(outputDir);
@@ -24,7 +24,6 @@ imPhase = displayCellsInMMTrapPhase(expInfoObj, pos, trap, ...
 
 imSeg = displayCellsInMMTrapPhase(expInfoObj, pos, trap, ...
     'Range', 1:5:endFrame, 'ShowSegmentation', 1, 'ShowOutlines', 0);
-
 
 % Sizes 
 rows1 = size(imPhase, 1); cols1 = size(imPhase, 2);
@@ -44,6 +43,11 @@ imPhaseCrop = imadjust(imPhase(upper:lower1, :));
 imSegCrop = imSeg(upper:lower2, :);
 
 Im = [imPhaseCrop; imSegCrop];
+
+% Stretch horizontally so columns are wider
+stretchFactor = 1.5;
+Im = imresize(Im, [size(Im,1), size(Im,2) * stretchFactor], 'nearest');
+imwrite(Im, kymographfilename);
 
 imwrite(Im, kymographfilename);
 

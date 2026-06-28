@@ -1,4 +1,5 @@
 function gr = movgrowthrate2(t,a,badSegmentations,K,fittype,debugflag)
+
 %  movgrowthrate   Moving cell growth rate value.
 %     gr = movgrowthrate(c,K) for an MCell object c and odd positive integer 
 %     scalar K computes a centered moving growth rate by sliding a window 
@@ -12,6 +13,7 @@ function gr = movgrowthrate2(t,a,badSegmentations,K,fittype,debugflag)
 %   grs - array of moving growth rates.
 %   frames - array of frames.
 %   a - array of cell areas
+
 %% Parse parameters
 if length(K)==1
     NB = ceil((K-1)/2);

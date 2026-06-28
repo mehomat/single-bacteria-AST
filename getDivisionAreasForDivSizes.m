@@ -1,6 +1,6 @@
 function [areas, cellIndices, divFrames] = getDivisionAreasForDivSizes(mCells,varargin)
 
-% This function extracts information about cell division areas. The cell
+% Extracts information about cell division areas. The cell
 % should have two daughter cells, all the cell tracks
 % should be sufficiently long. Then the division area is the area of the 
 % cell in the last detection frame.

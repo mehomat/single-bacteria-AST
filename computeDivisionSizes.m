@@ -90,10 +90,10 @@ function T = computeDivisionSizes(outputDir, cutoffFrame, posIdxRange, varargin)
             linDivAreas = linDivAreas(good, :);
 
             % Added for verification
-            fprintf('Position %s | N=%d | Valid after area filter: %d\n', ...
+            fprintf('Position %s | N = %d | Valid after area filter: %d\n', ...
                 pos, N, size(linDivAreas,1));
             if isempty(linDivAreas)
-                fprintf('Position %s | N=%d | No surviving full lineages\n', pos, N);
+                fprintf('Position %s | N = %d | No surviving full lineages\n', pos, N);
                 continue;
             end 
 

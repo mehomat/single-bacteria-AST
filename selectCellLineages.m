@@ -69,7 +69,6 @@ function lineages = selectCellLineages(mCells, N, varargin)
     end
 end
 
-
 % Utility functions
 function lin = selectLineage(c, N, L, pL, dL, sL, branch)
     lin = [];

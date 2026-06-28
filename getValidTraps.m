@@ -40,6 +40,7 @@ p.addParameter('MinCellGR', 0.002, @(x) isnumeric(x) && isscalar(x));
 p.addParameter('PreMarginMinutes', 0, @(x) isnumeric(x) && isscalar(x));
 p.addParameter('TrackFrameRange', [switchFrame-10/dt, switchFrame+5/dt], @(x) isnumeric(x) && numel(x)==2);
 p.addParameter('RequireDividingBeforeSwitch', false, @(x) islogical(x) || isnumeric(x));
+
 p.parse(varargin{:});
 
 trapRange = p.Results.Traps;

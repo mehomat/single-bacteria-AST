@@ -24,7 +24,6 @@ p = inputParser;
 
 p.addParameter('Window', [10 0], @(x) isnumeric(x) && (isscalar(x) || (numel(x)==2)));
 p.addParameter('FitType', 'exp1', @(x) (ischar(x) || isstring(x)));
-
 p.addParameter('Positions', [], @(x) isnumeric(x));
 p.addParameter('Traps', [], @(x) isnumeric(x));
 p.addParameter('YThresh', []);
@@ -53,9 +52,11 @@ nGrowthChannels = param.nGrowthChannels - length(param.emptyChannel);
 if isempty(trapRange), trapRange = 1:nGrowthChannels; end
 
 %% Main code
+
 allGrowthRates = [];
 allFrames = [];
 allTraps = [];
+allTraps_exported = []; % Keep track of traps that actually end up in T
 
 % Initialize stats
 stats = struct();
@@ -167,13 +168,14 @@ for pi = 1:length(posRange)
     allGrowthRates = [allGrowthRates; posGrowthRates];
     allFrames = [allFrames; posFrames];
     allTraps = [allTraps; posTraps];
+    allTraps_exported = [allTraps_exported; unique(posTraps)];
 
 end
 
 %% Stats for this posRange (strain)
 
 stats.TotalNonEmptyTraps = sum(nNonEmptyTraps_perPos, 'omitnan');
-stats.TotalIncludedTraps = sum(nIncludedTraps_perPos, 'omitnan');
+stats.TotalIncludedTraps = numel(unique(allTraps_exported));
 
 if stats.TotalNonEmptyTraps > 0
     stats.PercentIncludedTraps = 100 * stats.TotalIncludedTraps / stats.TotalNonEmptyTraps;

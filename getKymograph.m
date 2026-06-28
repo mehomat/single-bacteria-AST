@@ -1,9 +1,8 @@
 function Im = getKymograph(eln, sheet, positionRes, trapRes, positionSus, trapSus, endFrame, kymographfilename, outputDir)
 
-% getKymograph
-% Kymograph montage
+% Create kymograph montage
 %
-% Input arguments:
+% Input:
 % - eln: string/char, microfluidic ELN
 % - sheet: string/char, sheet name in excel
 % - positionRes: scalar, position for resistant strain
