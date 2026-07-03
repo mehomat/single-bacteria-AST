@@ -1,21 +1,21 @@
-function [gr, grStd] = getGrowthRateBeforeSwitch(mCell, switchFrame,makePlot)
-% Fit single-term exponential function 
-%   y = a * exp(b*t)
-% to find cell area growth rate before media switch.
-% Parameter b determines the growth rate.
+function [gr, grStd] = getGrowthRateBeforeSwitch(mCell, switchFrame, makePlot)
+
+% Fit single-term exponential function y = a * exp(b*t)
+% to find cell area growth rate before media switch
+% Parameter b determines the growth rate
 % 
 % The cell track must have "OK" segmentation labels in 
 % at least 75% of frames.
 %
 % Input:
-%   mCell - MCell object with cell track info
-%   switchFrame - the frame when media is switched to, e.g., antibiotics.
-%   makePlot - logical, if 1 plot fitted curve and input data. 
-%              Optional, 0 by default.
+% - mCell: MCell object with cell track info
+% - switchFrame: the frame when media is switched to, e.g., antibiotics
+% - makePlot: logical, if 1 plot fitted curve and input data. Optional, 0 
+% by default.
 %
 % Output:
-%   gr - fitted growth rate
-%   grStd - standard deviation from 66.(6)% confidence interval
+% - gr: fitted growth rate
+% - grStd: standard deviation from 66.(6)% confidence interval
 
 if nargin<3
     makePlot = 0;

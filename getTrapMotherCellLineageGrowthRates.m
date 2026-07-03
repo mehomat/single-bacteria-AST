@@ -1,177 +1,197 @@
-function T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange,yThresh)
-% T = getTrapMotherCellLineageGrowthRates(expInfoObj,window,fittype,switchFrame,dt,strain,posRange)
-% This function estimates the growth rate of the mother cells at the bottom of 
-% mother-machine traps and their descendants for a strain treated with 
-% antibiotics
+function [T, stats] = getTrapMotherCellLineageGrowthRates(expInfoObj, switchFrame, dt, strain, varargin)
+
+% Computes lineage growth rates per trap (mother + descendants) and keeps only
+% traps whose mother selection passes pre-switch growth QC
 %
 % Input:
-%   expInfoObj - expInfo object
-%   window - if scalar K, the window is centered and has length K frames.
-%            When K is even, the window is centered about the current and 
-%            previous elements of X.
-%            If tuple (NB,NF), the window uses previous NB frames, the 
-%            current frame, and the next NF frames, i.e., in total NB+NF+1.
-%   fittype - either 'fit1' (exponential fit) or 'poly1' (linear fit)
-%   switchFrame - frame index, where the first media switch occurs
-%   dt - frame rate, in minutes.
-%   strain - string with the name of the string. Optional.
-%   posRange - range of positions with the strain. Optional, use all
-%              positions by default.
-%   yThresh - a y-axis threshold for discarding trap mother cells.
-%             Optional, default [].
+% - expInfoObj: MATLAB object
+% - switchFrame: scalar, time point of switch to antibiotics
+% - dt: scalar, time step
+% - strain: string, name of the strain
 %
-% Output: table T with columns 'Frame', 'Trap', 'GrowthRate', 'Strain'.
-% The trap ID for trap t in position p is (p-1)*nTraps+t.
+% Name-value pairs:
+% - 'Window': [NB NF] or scalar, default [10 0]
+% - 'FitType': 'exp1' or 'poly1', default 'exp1'
+% - 'Positions': numeric array, default []
+% - 'Traps': numeric array, default []
+% - 'YThresh': scalar or [], default []
+%
+% Output:
+% - T: table including growth rates
 
-%parse parameters
-if nargin<6, strain = "";end
-if nargin<7, posRange = [];end
-if nargin<8, yThresh = [];end
+%% Parse inputs
+p = inputParser;
 
+p.addParameter('Window', [10 0], @(x) isnumeric(x) && (isscalar(x) || (numel(x)==2)));
+p.addParameter('FitType', 'exp1', @(x) (ischar(x) || isstring(x)));
+p.addParameter('Positions', [], @(x) isnumeric(x));
+p.addParameter('Traps', [], @(x) isnumeric(x));
+p.addParameter('YThresh', []);
 
-%hard-coded parameters
+p.parse(varargin{:});
+
+window = p.Results.Window;
+fittype = char(p.Results.FitType);
+posRange = p.Results.Positions;
+trapRange = p.Results.Traps;
+yThresh = p.Results.YThresh;
+
+%% Hard-coded parameters
+
 minLength = 5; % min track length for growth rate fitting
-maxGap = 5/dt; %  max allowed gap in cell lineage tracking is 5 min
-% track cells for more than 10 min before adding antibiotics and 
-% more than 5 min after adding antibiotics
-trackFrameRange = [switchFrame-10/dt, switchFrame+5/dt]; 
+maxGap = 5/dt; % max allowed gap in lineage tracking is 5 min
+minCellGR = 0.002; % min allowed cell growth rate before adding AB
+preMarginMinutes = 15; % how long before switch one demands clean growth
+trackFrameRange = [switchFrame-10/dt, switchFrame+5/dt];
 
 posList = expInfoObj.getPositionList();
-if isempty(posRange), posRange=1:length(posList);end
+if isempty(posRange), posRange = 1:length(posList); end
+
 param = expInfoObj.getParameters();
-nGrowthChannels = param.nGrowthChannels-length(param.emptyChannel);
+nGrowthChannels = param.nGrowthChannels - length(param.emptyChannel);
+if isempty(trapRange), trapRange = 1:nGrowthChannels; end
 
+%% Main code
 
-allGrowthRates = []; % growth rates
-allFrames = []; % frames
-allTraps = []; % traps
-allStrains = [];
-parfor pi=1:length(posRange)
+allGrowthRates = [];
+allFrames = [];
+allTraps = [];
+allTraps_exported = []; % Keep track of traps that actually end up in T
+
+% Initialize stats
+stats = struct();
+stats.Strain = string(strain);
+stats.TotalNonEmptyTraps = 0;
+stats.TotalIncludedTraps = 0;
+stats.PercentIncludedTraps = NaN;
+
+% Store trap inclusion counts per position
+nNonEmptyTraps_perPos = nan(length(posRange), 1);
+nIncludedTraps_perPos = nan(length(posRange), 1);
+
+for pi = 1:length(posRange)
     pos = posRange(pi);
 
-    % Load cell data for the current position
+    % Load cell data for the current position 
     mCells = expInfoObj.getMCells(pos);
-    birthFrames = [mCells.birthFrame];
-    lastFrames = [mCells.lastFrame];
-    cellTraps = [mCells.growthChannel];
 
+    % Use helper to get valid traps + mother IDs
+    S = getValidTraps(expInfoObj, pos, switchFrame, dt);
 
-    % Identify trap mother cell locations
-    cellYcoord = nan(size(cellTraps)); % if mother cells at the top, min cell y-coord, else max cell y-coord.
-    cellLengths = nan(size(cellTraps));
-    isDividing = false(size(cellTraps));
-    shifty = zeros(size(cellTraps));
-    cellGR = nan(size(cellTraps));
-    for i=1:length(mCells)
-        f = find(mCells(i).badSegmentations==0,1);
-        if ~isempty(f)
-            cellYcoord(i)=mCells(i).boundingBoxes(2,f);
-            cellLengths(i)=mCells(i).boundingBoxes(4,f);
-            shifty(i)=mean(diff(mCells(i).centroids(mCells(i).badSegmentations==0,2)));
-            if ~isempty(mCells(i).descendants)
-                isDividing(i)=true;
-            end
-        end
-        cellGR(i)=getGrowthRateBeforeSwitch(mCells(i),switchFrame);
+    if ~isempty(S)
+        nNonEmptyTraps_perPos(pi) = S(1).nNonEmptyTraps;
+        nIncludedTraps_perPos(pi) = S(1).nIncludedTraps;
+    else
+        nNonEmptyTraps_perPos(pi) = 0;
+        nIncludedTraps_perPos(pi) = 0;
     end
-    dy=quantile(cellLengths(birthFrames<switchFrame),0.1)/2; %the 10% cell length quantile divided by 2
-    meanshifty = mean(shifty(lastFrames<switchFrame),'omitnan'); %mean cell shift along y-axis. If >0, mother cells at the top, else at the bottom.
-    fprintf('%s(%d): meanshifty = %.2f\n',posList{pos},pos,meanshifty);
 
-    if meanshifty<0 % trap mother cells located at the bottom of images 
-        cellYcoord = cellYcoord+cellLengths;
-    end
-    if ~isempty(yThresh) %discard cells outside the feasible range
-        if meanshifty<0
-            cellYcoord(cellYcoord>yThresh)=NaN;
-        else
-            cellYcoord(cellYcoord<yThresh)=NaN;
-        end
-    end
-    % discard slow growing cells
-    cellYcoord(cellGR<0.002 | isnan(cellGR))=NaN;
-    
+    validMask = [S.isValid];
+    motherIdCells = {S.motherIds};
+    trapIDs = [S.trapID];
+    trapNums = [S.trap];
+
+    % Per position results
     posFrames = [];
     posGrowthRates = [];
     posTraps = [];
-    for trap = 1:nGrowthChannels
-    
-        % find trap mother cells and sort them by the birth frame
-        ind = cellTraps==trap; % & isDividing;
-        if any(ind)
-            if meanshifty>0 % mother cells at the top
-                yCutOff = min(cellYcoord(cellTraps==trap))+dy;
-                trapMotherCellIds = find(cellTraps==trap & cellYcoord<yCutOff);
-            else
-                yCutOff = max(cellYcoord(cellTraps==trap))-dy;
-                trapMotherCellIds = find(cellTraps==trap & cellYcoord>yCutOff);
-            end
-        else
-            trapMotherCellIds = [];
+
+    parfor ti = 1:numel(trapNums)
+        if ~validMask(ti)
+            continue;
         end
 
-        [trapBirthFrames,sortInd] = sort(birthFrames(trapMotherCellIds));
-        if numel(trapBirthFrames)>numel(unique(trapBirthFrames))
-             warning('Detected multiple trap mother cells in the same frame in pos %d, trap %d',pos, trap)
-        end
-        trapMotherCellIds = trapMotherCellIds(sortInd);
-        if ~isempty(trapBirthFrames) && trapBirthFrames(1)>trackFrameRange(1)
-            trapMotherCellIds = [];
-        end
-        
+        trapID = trapIDs(ti);
+        trapMotherCellIds = motherIdCells{ti};
+
+        % Lineage growth rate computation 
         trapGrowthRates = [];
         trapFrames = [];
-        for i=1:length(trapMotherCellIds)
-            cid = trapMotherCellIds(i);
+
+        for ii = 1:numel(trapMotherCellIds)
+            cid = trapMotherCellIds(ii);
             c = mCells(cid);
+
             [areas, badSegmentations] = getSumOfLineage(c);
-            frs = c.birthFrame : c.birthFrame+length(areas)-1;
+            frs = c.birthFrame : (c.birthFrame + length(areas) - 1);
+
+            % Adjust start to avoid too much overlap with previous segment
             if ~isempty(trapFrames)
-                firstFrameIndex = find(frs>trapFrames(end)-window(1),1);
+                firstFrameIndex = find(frs > trapFrames(end) - window(1), 1);
+                if isempty(firstFrameIndex)
+                    continue;
+                end
                 areas = areas(firstFrameIndex:end);
                 badSegmentations = badSegmentations(firstFrameIndex:end);
                 frs = frs(firstFrameIndex:end);
             end
-            if length(frs)>minLength
-                t = frs*dt;
-                grs = movgrowthrate2(t,areas,badSegmentations,window,fittype);
-                % skip overlap frames
+
+            if numel(frs) > minLength
+                t = frs * dt;
+                grs = movgrowthrate2(t, areas, badSegmentations, window, fittype);
+
+                % Skip overlap frames entirely
                 if ~isempty(trapFrames)
-                    firstFrameIndex = find(frs>trapFrames(end),1);
+                    firstFrameIndex = find(frs > trapFrames(end), 1);
+                    if isempty(firstFrameIndex)
+                        continue;
+                    end
                     grs = grs(firstFrameIndex:end);
                     frs = frs(firstFrameIndex:end);
                 end
-                trapGrowthRates = [trapGrowthRates; grs];
-                trapFrames  = [trapFrames; frs'];
+
+                trapGrowthRates = [trapGrowthRates; grs(:)];
+                trapFrames = [trapFrames; frs(:)];
             end
         end
 
-        ind = isfinite(trapGrowthRates);
-        trapGrowthRates = trapGrowthRates(ind);
-        trapFrames = trapFrames(ind);
-        % if a cell lineage has a large gap, keep the first part
-        f = find(diff(trapFrames)>maxGap,1);
+        % Clean up
+        indFinite = isfinite(trapGrowthRates);
+        trapGrowthRates = trapGrowthRates(indFinite);
+        trapFrames = trapFrames(indFinite);
+
+        % Truncate at first big gap
+        f = find(diff(trapFrames) > maxGap, 1);
         if ~isempty(f)
             trapFrames = trapFrames(1:f);
             trapGrowthRates = trapGrowthRates(1:f);
         end
-        if ~isempty(trapFrames) && trapFrames(1)<trackFrameRange(1) && trapFrames(end)>trackFrameRange(2)
+
+        % Keep only traps covering full tracking window
+        if ~isempty(trapFrames) && trapFrames(1) < trackFrameRange(1) && trapFrames(end) > trackFrameRange(2)
             posGrowthRates = [posGrowthRates; trapGrowthRates];
             posFrames = [posFrames; trapFrames];
-            trapID = (pos-1)*nGrowthChannels+trap;
-            posTraps = [posTraps; repmat(trapID,size(trapGrowthRates))];
+            posTraps = [posTraps; repmat(trapID, size(trapGrowthRates))];
         end
     end
+
     allGrowthRates = [allGrowthRates; posGrowthRates];
     allFrames = [allFrames; posFrames];
     allTraps = [allTraps; posTraps];
+    allTraps_exported = [allTraps_exported; unique(posTraps)];
+
 end
 
-if ~isempty(strain)
-    allStrains = [allStrains; repmat(strain,size(allTraps))];
-    T = table(allGrowthRates,allFrames,allTraps,allStrains,...
-        'VariableNames',{'GrowthRate','Frame','Trap','Strain'});
+%% Stats for this posRange (strain)
+
+stats.TotalNonEmptyTraps = sum(nNonEmptyTraps_perPos, 'omitnan');
+stats.TotalIncludedTraps = numel(unique(allTraps_exported));
+
+if stats.TotalNonEmptyTraps > 0
+    stats.PercentIncludedTraps = 100 * stats.TotalIncludedTraps / stats.TotalNonEmptyTraps;
 else
-    T = table(allGrowthRates,allFrames,allTraps,...
-        'VariableNames',{'GrowthRate','Frame','Trap'});
+    stats.PercentIncludedTraps = NaN;
+end
+
+
+%% Build output table
+if ~isempty(strain)
+    allStrains = repmat(string(strain), size(allTraps));
+    T = table(allGrowthRates, allFrames, allTraps, allStrains, ...
+        'VariableNames', {'GrowthRate','Frame','Trap','Strain'});
+else
+    T = table(allGrowthRates, allFrames, allTraps, ...
+        'VariableNames', {'GrowthRate','Frame','Trap'});
+end
+
 end
